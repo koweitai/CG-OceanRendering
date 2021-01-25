@@ -1,0 +1,327 @@
+<html>
+
+<head>
+<title>ICG WebGL &mdash; HW1</title>
+<meta http-equiv="content-type" content="text/html; charset=ISO-8859-1">
+
+<script type="text/javascript" src="./js/glMatrix-0.9.5.min.js"></script>
+<script type="text/javascript" src="./js/webgl-utils.js"></script>
+
+<!-- 
+    TODO HERE: 
+    modify fragment shader or write another one
+    to implement flat, gouraud and phong shading
+ -->
+<script id="fragmentShader_phong" type="fragment">
+    precision mediump float;
+
+    varying vec3 mvNormal;
+    varying vec3 mvVertex;
+    varying mat3 normalMatrix;
+    varying vec3 vFrontColor;
+
+    void main(void) {
+        vec4 fragcolor = vec4(0.0);
+        
+        vec3 light1 = vec3(30,50,-25);
+        vec3 lightColor1 = vec3(1.0);
+        vec3 light2 = vec3(30,50,-25);
+        vec3 lightColor2 = vec3(1.0);
+        vec3 light3 = vec3(0,0,-65);
+        vec3 lightColor3 = vec3(0.0);
+
+        vec3 V = -normalize(mvVertex);
+        vec3 N = normalize(mvNormal);
+        vec3 L1 = normalize(light1 - mvVertex);
+        vec3 L2 = normalize(light2 - mvVertex);
+        vec3 L3 = normalize(light3 - mvVertex);
+        vec3 H1 = normalize(L1+V);
+        vec3 H2 = normalize(L2+V);
+        vec3 H3 = normalize(L3+V);
+
+        vec3 phong = vec3(0.0);
+
+        float ka = 0.1;
+        float kd = 0.6;
+        float ks = 0.3;
+
+        vec3 ambient = (lightColor1 + lightColor2 + lightColor3) * ka * vFrontColor;
+
+        float cos1 = max(dot(L1,N),0.0); 
+        float cos2 = max(dot(L2,N),0.0);
+        float cos3 = max(dot(L3,N),0.0);
+        vec3 diffuse = lightColor1 * kd * vFrontColor * cos1
+                        + lightColor2 * kd * vFrontColor * cos2
+                        + lightColor3 * kd * vFrontColor * cos3;
+
+        float cosAlpha1 = max(dot(H1,N),0.0);
+        float cosAlpha2 = max(dot(H2,N),0.0);
+        float cosAlpha3 = max(dot(H3,N),0.0);
+        vec3 specular1 = lightColor1 * ks * pow(cosAlpha1,16.0);
+        if (dot(L1,N) < 0.0){
+            specular1 = vec3(0.0);
+        }
+        vec3 specular2 = lightColor2 * ks * pow(cosAlpha2,16.0);
+        if (dot(L2,N) < 0.0){
+            specular2 = vec3(0.0);
+        }
+        vec3 specular3 = lightColor3 * ks * pow(cosAlpha3,16.0);   
+        if (dot(L3,N) < 0.0){
+            specular3 = vec3(0.0);
+        }
+        vec3 specular = specular1 + specular2 + specular3;
+
+        phong = ambient + diffuse + specular;
+
+        fragcolor = vec4(phong, 1.0);
+        gl_FragColor = fragcolor;
+    }
+</script>
+
+<script id="vertexShader_phong" type="vertex">
+    attribute vec3 aVertexPosition;
+    attribute vec3 aFrontColor;
+
+    attribute vec3 aVertexNormal;
+
+    uniform mat4 uMVMatrix;
+    uniform mat4 uPMatrix;
+
+    varying vec3 mvNormal;
+    varying vec3 mvVertex;
+    varying mat3 normalMatrix;
+    varying vec3 vFrontColor;
+    
+    void main(void) {
+        vFrontColor = aFrontColor;
+        normalMatrix = mat3(uMVMatrix);
+        mvVertex = (uMVMatrix * vec4(aVertexPosition,1.0)).xyz;     
+        mvNormal = normalMatrix * aVertexNormal;
+        gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+    }
+</script>
+
+<script type="text/javascript">
+    var gl;
+    var shaderProgram;
+
+    var mvMatrix = mat4.create();
+    var pMatrix  = mat4.create();
+
+    var teapotVertexPositionBuffer1;
+    var teapotVertexNormalBuffer1;
+    var teapotVertexFrontColorBuffer1;
+
+    var lastTime    = 0;
+
+    var translateMatrix1 = [0,-20,-90];
+
+    var scaleMatrix1 = [6,6,6];
+
+    var count = 0;
+
+    function initGL(canvas) {
+        try {
+            gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+            gl.viewportWidth  = canvas.width;
+            gl.viewportHeight = canvas.height;
+        } 
+        catch (e) {
+        }
+
+        if (!gl) {
+            alert("Could not initialise WebGL, sorry :-(");
+        }
+
+        if(!gl.getExtension('OES_standard_derivatives')) {
+            throw 'extension not support'; }
+    }
+
+    function getShader(gl, id) {
+        var shaderScript = document.getElementById(id);
+        if (!shaderScript) {
+            return null;
+        }
+
+        var shaderSource = "";
+        var k = shaderScript.firstChild;
+        while (k) {
+            if (k.nodeType == 3) {
+                shaderSource += k.textContent;
+            }
+
+            k = k.nextSibling;
+        }
+
+        var shader;
+        if (shaderScript.type == "fragment") {
+            shader = gl.createShader(gl.FRAGMENT_SHADER);
+        } 
+        else if (shaderScript.type == "vertex") {
+            shader = gl.createShader(gl.VERTEX_SHADER);
+        } 
+        else {
+            return null;
+        }
+
+        gl.shaderSource(shader, shaderSource);
+        gl.compileShader(shader);
+
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            alert(gl.getShaderInfoLog(shader));
+            return null;
+        }
+
+        return shader;
+    }
+
+    function initShaders() {
+        var fragmentShader_phong = getShader(gl, "fragmentShader_phong");
+        var vertexShader_phong   = getShader(gl, "vertexShader_phong");
+
+        shaderProgram = gl.createProgram();   
+        gl.attachShader(shaderProgram, vertexShader_phong);
+        gl.attachShader(shaderProgram, fragmentShader_phong);
+
+        gl.linkProgram(shaderProgram);
+
+        if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+            alert("Could not initialise shaders");
+        }
+
+        gl.useProgram(shaderProgram);
+
+        shaderProgram.vertexPositionAttribute = gl.getAttribLocation(shaderProgram, "aVertexPosition");
+        gl.enableVertexAttribArray(shaderProgram.vertexPositionAttribute);
+        shaderProgram.vertexFrontColorAttribute = gl.getAttribLocation(shaderProgram, "aFrontColor");
+        gl.enableVertexAttribArray(shaderProgram.vertexFrontColorAttribute);
+
+        shaderProgram.vertexNormalAttribute = gl.getAttribLocation(shaderProgram, "aVertexNormal");
+        gl.enableVertexAttribArray(shaderProgram.vertexNormalAttribute);
+
+        shaderProgram.pMatrixUniform  = gl.getUniformLocation(shaderProgram, "uPMatrix");
+        shaderProgram.mvMatrixUniform = gl.getUniformLocation(shaderProgram, "uMVMatrix");
+    }
+
+    function setMatrixUniforms() {
+        gl.uniformMatrix4fv(shaderProgram.pMatrixUniform, false, pMatrix);
+        gl.uniformMatrix4fv(shaderProgram.mvMatrixUniform, false, mvMatrix);
+    }
+
+    function degToRad(degrees) {
+        return degrees * Math.PI / 180;
+    }
+
+    function handleLoadedTeapot1(teapotData) {
+        teapotVertexPositionBuffer1 = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, teapotVertexPositionBuffer1);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(teapotData.vertexPositions), gl.DYNAMIC_DRAW);
+        teapotVertexPositionBuffer1.itemSize = 3;
+        teapotVertexPositionBuffer1.numItems = teapotData.vertexPositions.length / 3;
+
+        teapotVertexNormalBuffer1 = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, teapotVertexNormalBuffer1);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(teapotData.vertexNormals), gl.DYNAMIC_DRAW);
+        teapotVertexNormalBuffer1.itemSize = 3;
+        teapotVertexNormalBuffer1.numItems = teapotData.vertexNormals.length / 3;
+
+        teapotVertexFrontColorBuffer1 = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, teapotVertexFrontColorBuffer1);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(teapotData.vertexFrontcolors), gl.DYNAMIC_DRAW);
+        teapotVertexFrontColorBuffer1.itemSize = 3;
+        teapotVertexFrontColorBuffer1.numItems = teapotData.vertexFrontcolors.length / 3;
+    }
+
+    function drawScene() {
+        gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        if (teapotVertexPositionBuffer1   == null || 
+            teapotVertexNormalBuffer1     == null || 
+            teapotVertexFrontColorBuffer1 == null) {
+            
+            return;
+        }
+
+        // Setup Projection Matrix
+        mat4.perspective(45, gl.viewportWidth / gl.viewportHeight, 0.1, 200.0, pMatrix);
+
+        mat4.identity(mvMatrix);
+        mat4.translate(mvMatrix, translateMatrix1);
+        mat4.scale(mvMatrix,scaleMatrix1);
+        //mat4.rotate(mvMatrix,degToRad(15),[0,1,0]);
+        mat4.rotate(mvMatrix,degToRad(33),[1,0,0]);
+
+        setMatrixUniforms();
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, teapotVertexPositionBuffer1);
+        gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, 
+                               teapotVertexPositionBuffer1.itemSize, 
+                               gl.FLOAT, 
+                               false, 
+                               0, 
+                               0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, teapotVertexFrontColorBuffer1);
+        gl.vertexAttribPointer(shaderProgram.vertexFrontColorAttribute, 
+                               teapotVertexFrontColorBuffer1.itemSize, 
+                               gl.FLOAT, 
+                               false, 
+                               0, 
+                               0);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, teapotVertexNormalBuffer1);
+        gl.vertexAttribPointer(shaderProgram.vertexNormalAttribute, 
+                               teapotVertexNormalBuffer1.itemSize, 
+                               gl.FLOAT, 
+                               false, 
+                               0, 
+                               0);
+
+        gl.drawArrays(gl.TRIANGLES, 0, teapotVertexPositionBuffer1.numItems);
+    }
+
+    function animate() {
+        var timeNow = new Date().getTime();
+        var request = new XMLHttpRequest();
+        //request.open("GET", "./Ocean_with_gradient_color/Ocean0.json");
+        frames = 1000;
+        var index = count % frames;
+        console.log(index)
+        filename = "./Ocean_final/Ocean"+index+".json"
+        request.open("GET",filename);
+        count += 1;
+        request.onreadystatechange = function () {
+            if (request.readyState == 4) {
+                handleLoadedTeapot1(JSON.parse(request.responseText));
+            }
+        }
+        request.send();
+    }
+
+    function tick() {
+        requestAnimFrame(tick);
+        drawScene();
+        animate();
+    }
+
+    function webGLStart() {
+        var canvas = document.getElementById("ICG-canvas");
+        initGL(canvas);
+        initShaders();
+
+        gl.clearColor(0.53, 0.81, 0.98, 1.0);
+        gl.enable(gl.DEPTH_TEST);
+
+        tick();
+    }
+</script>
+</head>
+
+<body onload="webGLStart();">
+    <canvas id="ICG-canvas" style="border: none;" width="1280" height="720"></canvas>
+    <br/>
+    </script>
+</body>
+
+</html>
