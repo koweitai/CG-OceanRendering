@@ -1,5 +1,5 @@
 # CG-OceanRendering
-Check OceanRendering.mov to see the outcome!
+Check OceanRendering.mov to see the outcome!  
 ![](gif.gif)
 
 ## Ocean_js
