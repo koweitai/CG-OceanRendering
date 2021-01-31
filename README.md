@@ -1,6 +1,6 @@
 # CG-OceanRendering
 Check OceanRendering.mov to see the outcome!
-<iframe src='//gifs.com/embed/oceanrendering-mOK0z9' frameborder='0' scrolling='no' width='1222px' height='752px' style='-webkit-backface-visibility: hidden;-webkit-transform: scale(1);' ></iframe>
+![](gif.gif)
 
 ## Ocean_js
 The json files are created by Gerstner Wave Model. To create the flowing effect, we set up 1000 frames and change the model for the shader every second.
